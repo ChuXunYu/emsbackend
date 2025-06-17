@@ -1,0 +1,160 @@
+-- 用户表
+CREATE TABLE IF NOT EXISTS users (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    phone VARCHAR(20) NOT NULL UNIQUE,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    status ENUM('ACTIVE', 'INACTIVE', 'ON_LEAVE') NOT NULL DEFAULT 'ACTIVE',
+    region VARCHAR(100),
+    level ENUM('PROVINCE', 'CITY'),
+    role ENUM('PUBLIC_SUPERVISOR', 'GRID_WORKER', 'SUPERVISOR', 'ADMIN', 'DECISION_MAKER') NOT NULL,
+    skills JSON,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- 环境反馈表
+CREATE TABLE IF NOT EXISTS feedback (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    event_id VARCHAR(36) NOT NULL UNIQUE,
+    user_id BIGINT,
+    title VARCHAR(100) NOT NULL,
+    description TEXT NOT NULL,
+    location VARCHAR(255) NOT NULL,
+    latitude DECIMAL(10,7) NOT NULL,
+    longitude DECIMAL(10,7) NOT NULL,
+    images JSON,
+    status ENUM('AI_REVIEWING', 'AI_REVIEW_FAILED', 'PENDING_REVIEW', 'PENDING_ASSIGNMENT', 'ASSIGNED', 'IN_PROGRESS', 'SUBMITTED', 'COMPLETED', 'CLOSED_INVALID') NOT NULL,
+    status_message VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- 任务表
+CREATE TABLE IF NOT EXISTS tasks (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    feedback_id BIGINT,
+    title VARCHAR(100) NOT NULL,
+    description TEXT NOT NULL,
+    location VARCHAR(255) NOT NULL,
+    latitude DECIMAL(10,7) NOT NULL,
+    longitude DECIMAL(10,7) NOT NULL,
+    assigned_to BIGINT,
+    assigned_by BIGINT,
+    priority ENUM('LOW', 'MEDIUM', 'HIGH', 'URGENT') NOT NULL DEFAULT 'MEDIUM',
+    status ENUM('PENDING', 'ASSIGNED', 'IN_PROGRESS', 'SUBMITTED', 'COMPLETED', 'CANCELLED') NOT NULL,
+    status_message VARCHAR(255),
+    due_date TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (feedback_id) REFERENCES feedback(id),
+    FOREIGN KEY (assigned_to) REFERENCES users(id),
+    FOREIGN KEY (assigned_by) REFERENCES users(id)
+);
+
+-- 任务历史记录表
+CREATE TABLE IF NOT EXISTS task_history (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    task_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    action ENUM('CREATED', 'ASSIGNED', 'ACCEPTED', 'STARTED', 'SUBMITTED', 'COMPLETED', 'CANCELLED', 'COMMENTED') NOT NULL,
+    description TEXT,
+    images JSON,
+    aqi_value INT,
+    aqi_level ENUM('EXCELLENT', 'GOOD', 'LIGHTLY_POLLUTED', 'MODERATELY_POLLUTED', 'HEAVILY_POLLUTED', 'SEVERELY_POLLUTED'),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (task_id) REFERENCES tasks(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- 网格表
+CREATE TABLE IF NOT EXISTS grids (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    region VARCHAR(100) NOT NULL,
+    level ENUM('PROVINCE', 'CITY', 'DISTRICT', 'STREET') NOT NULL,
+    parent_id BIGINT,
+    boundary POLYGON NOT NULL,
+    center_latitude DECIMAL(10,7) NOT NULL,
+    center_longitude DECIMAL(10,7) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (parent_id) REFERENCES grids(id)
+);
+
+-- 空气质量数据表
+CREATE TABLE IF NOT EXISTS aqi_data (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    grid_id BIGINT NOT NULL,
+    task_id BIGINT,
+    pm25 DECIMAL(6,2),
+    pm10 DECIMAL(6,2),
+    so2 DECIMAL(6,2),
+    no2 DECIMAL(6,2),
+    o3 DECIMAL(6,2),
+    co DECIMAL(6,2),
+    aqi INT NOT NULL,
+    aqi_level ENUM('EXCELLENT', 'GOOD', 'LIGHTLY_POLLUTED', 'MODERATELY_POLLUTED', 'HEAVILY_POLLUTED', 'SEVERELY_POLLUTED') NOT NULL,
+    dominant_pollutant VARCHAR(10),
+    data_source ENUM('MONITOR', 'WORKER', 'ESTIMATE') NOT NULL,
+    recorded_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (grid_id) REFERENCES grids(id),
+    FOREIGN KEY (task_id) REFERENCES tasks(id)
+);
+
+-- 邮箱验证码表
+CREATE TABLE IF NOT EXISTS email_verification_codes (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    email VARCHAR(100) NOT NULL,
+    code VARCHAR(6) NOT NULL,
+    purpose ENUM('REGISTRATION', 'PASSWORD_RESET', 'EMAIL_CHANGE') NOT NULL,
+    attempt_count INT DEFAULT 0,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 权限表
+CREATE TABLE IF NOT EXISTS permissions (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(50) NOT NULL UNIQUE,
+    description VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 角色权限表
+CREATE TABLE IF NOT EXISTS role_permissions (
+    role ENUM('PUBLIC_SUPERVISOR', 'GRID_WORKER', 'SUPERVISOR', 'ADMIN', 'DECISION_MAKER') NOT NULL,
+    permission_id BIGINT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (role, permission_id),
+    FOREIGN KEY (permission_id) REFERENCES permissions(id)
+);
+
+-- 系统设置表
+CREATE TABLE IF NOT EXISTS system_settings (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    setting_key VARCHAR(50) NOT NULL UNIQUE,
+    setting_value TEXT NOT NULL,
+    description VARCHAR(255),
+    updated_by BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (updated_by) REFERENCES users(id)
+);
+
+-- 审计日志表
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT,
+    action VARCHAR(50) NOT NULL,
+    entity_type VARCHAR(50) NOT NULL,
+    entity_id BIGINT,
+    details TEXT,
+    ip_address VARCHAR(50),
+    user_agent VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+); 
